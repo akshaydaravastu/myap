@@ -4,7 +4,7 @@
 	<groupId>in.javahome</groupId>
 	<artifactId>myweb</artifactId>
 	<packaging>war</packaging>
-	<version>0.0.7-SNAPSHOT</version>
+	<version>0.0.12</version>
 	<name>my-app</name>
 	<url>http://maven.apache.org</url>
 
@@ -27,7 +27,12 @@
 			<version>4.13.1</version>
 			<scope>test</scope>
 		</dependency>
-	
+		<dependency>
+		    <groupId>org.apache.poi</groupId>
+		    <artifactId>poi</artifactId>
+		    <version>4.1.2</version>
+		</dependency>
+
 	</dependencies>
 	<distributionManagement>
 		 <snapshotRepository>

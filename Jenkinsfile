@@ -1,52 +1,62 @@
+@Library('javahome-libs') _
 
-node {
-   // This is to demo github action	
-   def sonarUrl = 'sonar.host.url=http://172.31.30.136:9000'
-   def mvn = tool (name: 'maven3', type: 'maven') + '/bin/mvn'
-   stage('SCM Checkout'){
-    // Clone repo
-	git branch: 'master', 
-	credentialsId: 'github', 
-	url: 'https://github.com/javahometech/myweb'
-   
-   }
-   
-   stage('Sonar Publish'){
-	   withCredentials([string(credentialsId: 'sonarqube', variable: 'sonarToken')]) {
-        def sonarToken = "sonar.login=${sonarToken}"
-        sh "${mvn} sonar:sonar -D${sonarUrl}  -D${sonarToken}"
-	 }
-      
-   }
-   
-	
-   stage('Mvn Package'){
-	   // Build using maven
-	   
-	   sh "${mvn} clean package deploy"
-   }
-   
-   stage('deploy-dev'){
-       def tomcatDevIp = '172.31.28.172'
-	   def tomcatHome = '/opt/tomcat8/'
-	   def webApps = tomcatHome+'webapps/'
-	   def tomcatStart = "${tomcatHome}bin/startup.sh"
-	   def tomcatStop = "${tomcatHome}bin/shutdown.sh"
-	   
-	   sshagent (credentials: ['tomcat-dev']) {
-	      sh "scp -o StrictHostKeyChecking=no target/myweb*.war ec2-user@${tomcatDevIp}:${webApps}myweb.war"
-          sh "ssh ec2-user@${tomcatDevIp} ${tomcatStop}"
-		  sh "ssh ec2-user@${tomcatDevIp} ${tomcatStart}"
-       }
-   }
-   stage('Email Notification'){
-		mail bcc: '', body: """Hi Team, You build successfully deployed
-		                       Job URL : ${env.JOB_URL}
-							   Job Name: ${env.JOB_NAME}
-
-Thanks,
-DevOps Team""", cc: '', from: '', replyTo: '', subject: "${env.JOB_NAME} Success", to: 'hari.kammana@gmail.com'
-   
-   }
+pipeline{
+    agent any
+    options {
+      timeout(30)
+    }
+    stages{
+        
+        stage('Maven and Sonar'){
+            
+            parallel{
+            stage('Sonar Analysis'){
+                steps{
+                    withSonarQubeEnv('sonar7') {
+                        sh 'mvn sonar:sonar'
+                    }
+                    
+                    timeout(time: 1, unit: 'HOURS') {
+                        script{
+                          def qg = waitForQualityGate()
+                          if (qg.status != 'OK') {
+                              error "Pipeline aborted due to quality gate failure: ${qg.status}"
+                          }
+                        }
+                  }
+                }
+            }
+            
+             stage('Mvn Build'){
+                steps{
+                    sh 'mvn clean package'
+                }
+            }
+        
+     
+        }
+        
+        }
+        stage("Nexus Deploy"){
+            steps{
+                script{
+                    def pomFile = readMavenPom file: 'pom.xml'
+                    nexusArtifactUploader artifacts: [[artifactId: 'myweb', classifier: '', file: "target/myweb-${pomFile.version}.war", type: 'war']], 
+                                      credentialsId: 'nexus3', 
+                                      groupId: 'in.javahome', 
+                                      nexusUrl: '172.31.71.247:8081', 
+                                      nexusVersion: 'nexus3', 
+                                      protocol: 'http', repository: 'javahome-my-app', 
+                                      version: pomFile.version
+                }
+            }
+        }
+          
+        stage('Tomcat Deploy'){
+            steps{
+                tomcatDeploy("172.31.35.55","ec2-user","myweb")
+            }
+        }
+     
+    }
 }
-
